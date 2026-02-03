@@ -326,41 +326,48 @@
     async function fetchData() {
         try {
             let csvText = "";
-            const proxyUrl = "https://corsproxy.io/?"; 
             
-            if (GOOGLE_SHEET_CSV_URL.includes("您的_CSV_網址")) {
+            // 檢查是否未填寫網址
+            if (!GOOGLE_SHEET_CSV_URL || GOOGLE_SHEET_CSV_URL.includes("您的_CSV_網址")) {
                  console.warn("尚未設定網址，使用備份資料");
                  csvText = BACKUP_DATA;
-            } else if (GOOGLE_SHEET_CSV_URL.startsWith("http")) {
+            } else {
+                // 直接連線 Google，不使用 Proxy (最穩定)
+                const targetUrl = GOOGLE_SHEET_CSV_URL + (GOOGLE_SHEET_CSV_URL.includes('?') ? '&' : '?') + 't=' + new Date().getTime();
+                
                 try {
-                    // 3秒逾時機制
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-                    const targetUrl = proxyUrl + encodeURIComponent(GOOGLE_SHEET_CSV_URL);
-                    
+                    const timeoutId = setTimeout(() => controller.abort(), 4000); // 延長到4秒
+    
                     const response = await fetch(targetUrl, { signal: controller.signal });
-                    clearTimeout(timeoutId); 
-
+                    clearTimeout(timeoutId);
+    
                     if (response.ok) {
                         csvText = await response.text();
+                        console.log("成功直接從 Google 讀取資料");
                     } else {
-                        throw new Error("Proxy fetch failed");
+                        throw new Error("Google 回傳錯誤: " + response.status);
                     }
                 } catch(e) { 
-                    console.warn("連線逾時或失敗，改用備份資料 (秒開模式)", e); 
-                    csvText = BACKUP_DATA; 
+                    console.warn("直接讀取失敗，嘗試使用 Proxy 作為備援...", e);
+                    // 只有直接連線失敗才考慮用 Proxy
+                    try {
+                        const backupProxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(targetUrl);
+                        const proxyRes = await fetch(backupProxyUrl);
+                        const proxyData = await proxyRes.json();
+                        csvText = proxyData.contents;
+                    } catch(proxyErr) {
+                        console.error("所有連線方式皆失敗，改用備份資料");
+                        csvText = BACKUP_DATA;
+                    }
                 }
-            } else { 
-                csvText = BACKUP_DATA; 
             }
             
             parseCSVRobust(csvText);
             generateLocationButtons();
-            
             document.getElementById('loading').style.display = 'none';
         } catch (err) {
-            console.error(err);
+            console.error("發生非預期錯誤:", err);
             parseCSVRobust(BACKUP_DATA);
             generateLocationButtons();
             document.getElementById('loading').style.display = 'none';
