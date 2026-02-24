@@ -375,6 +375,7 @@
     }
 
     // 解析 CSV，現在不再讀取「形式」欄位
+    // 解析 CSV，現在改為「自動對應標題名稱」模式，更具彈性
     function parseCSVRobust(text) {
         if(!text) return;
         const cleanText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -393,7 +394,7 @@
                 currentField = '';
             } else if (char === '\n' && !inQuote) {
                 currentRow.push(currentField.trim());
-                if(currentRow.length > 1) rows.push(currentRow);
+                if(currentRow.length > 0) rows.push(currentRow);
                 currentRow = [];
                 currentField = '';
             } else {
@@ -405,25 +406,42 @@
             rows.push(currentRow);
         }
 
+        if (rows.length < 2) return;
+
+        // --- 新增：自動尋找標題索引 ---
+        const headers = rows[0];
+        const getIdx = (name) => headers.indexOf(name);
+
+        const col = {
+            title: getIdx("課程名稱"),
+            show: getIdx("顯示與否"),
+            reserve: getIdx("預約"),
+            targetFilter: getIdx("適合對象(篩選器用)"),
+            targetDisplay: getIdx("適合對象(顯示於前台)"),
+            location: getIdx("地點"),
+            duration: getIdx("時間"),
+            link: getIdx("申請連結"),
+            image: getIdx("活動封面圖")
+        };
+
         allActivities = [];
-        // 跳過標題列，從第1列開始
+        
+        // 從第 1 列開始遍歷資料
         for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
-            // 確保至少有9欄 (圖片為最後一欄)
-            if (row.length < 8) continue;
-            if (row[1] !== '顯示') continue;
+            
+            // 檢查是否標記為「顯示」，且確保該行資料長度足夠
+            if (col.show === -1 || row[col.show] !== '顯示') continue;
 
-            // 欄位對應 (請確保 Excel 順序一致)
-            // 0:名稱, 1:顯示, 2:預約, 3:對象(篩選), 4:對象(顯示), 5:地點, 6:時間, 7:連結, 8:圖片
             const activity = {
-                title: row[0],
-                reservationType: row[2],
-                targetFilter: row[3],
-                targetDisplay: row[4],
-                location: row[5],
-                duration: row[6],
-                link: row[7],     
-                image: convertDriveLink(row[8]) 
+                title: col.title !== -1 ? row[col.title] : "未命名活動",
+                reservationType: col.reserve !== -1 ? row[col.reserve] : "",
+                targetFilter: col.targetFilter !== -1 ? row[col.targetFilter] : "",
+                targetDisplay: col.targetDisplay !== -1 ? row[col.targetDisplay] : "",
+                location: col.location !== -1 ? row[col.location] : "",
+                duration: col.duration !== -1 ? row[col.duration] : "",
+                link: col.link !== -1 ? row[col.link] : "#",     
+                image: col.image !== -1 ? convertDriveLink(row[col.image]) : DEFAULT_IMAGE
             };
             allActivities.push(activity);
         }
